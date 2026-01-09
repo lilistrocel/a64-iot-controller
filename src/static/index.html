@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A64 IoT Controller Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/app.js"></script>
+</head>
+<body x-data x-init="$store.dashboard.init()">
+    <!-- Header -->
+    <header class="header">
+        <h1>A64 IoT Controller</h1>
+        <div class="header-controls">
+            <span class="last-update" x-show="$store.dashboard.lastUpdate">
+                Last update: <span x-text="$store.dashboard.formatTime($store.dashboard.lastUpdate)"></span>
+            </span>
+            <label class="checkbox-label">
+                <input type="checkbox" x-model="$store.dashboard.autoRefresh">
+                Auto-refresh
+            </label>
+            <button class="btn btn-secondary" @click="$store.dashboard.refresh()" :disabled="$store.dashboard.loading">
+                <span x-show="!$store.dashboard.loading">Refresh</span>
+                <span x-show="$store.dashboard.loading" class="spinner"></span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="nav-tabs">
+        <button class="nav-tab" :class="{ 'active': $store.dashboard.currentTab === 'overview' }"
+                @click="$store.dashboard.currentTab = 'overview'">Overview</button>
+        <button class="nav-tab" :class="{ 'active': $store.dashboard.currentTab === 'sensors' }"
+                @click="$store.dashboard.currentTab = 'sensors'">Sensors</button>
+        <button class="nav-tab" :class="{ 'active': $store.dashboard.currentTab === 'relays' }"
+                @click="$store.dashboard.currentTab = 'relays'">Relays</button>
+        <button class="nav-tab" :class="{ 'active': $store.dashboard.currentTab === 'schedules' }"
+                @click="$store.dashboard.currentTab = 'schedules'">Schedules</button>
+        <button class="nav-tab" :class="{ 'active': $store.dashboard.currentTab === 'triggers' }"
+                @click="$store.dashboard.currentTab = 'triggers'">Triggers</button>
+        <button class="nav-tab" :class="{ 'active': $store.dashboard.currentTab === 'devices' }"
+                @click="$store.dashboard.currentTab = 'devices'">Devices</button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Overview Tab -->
+        <div x-show="$store.dashboard.currentTab === 'overview'">
+            <!-- Status Cards -->
+            <div class="grid-4">
+                <div class="card stat-card">
+                    <div class="stat-value" x-text="$store.dashboard.gateways.filter(g => g.online).length + '/' + $store.dashboard.gateways.length"></div>
+                    <div class="stat-label">Gateways Online</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-value" x-text="$store.dashboard.devices.filter(d => d.online).length + '/' + $store.dashboard.devices.length"></div>
+                    <div class="stat-label">Devices Online</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-value" x-text="$store.dashboard.readings.length"></div>
+                    <div class="stat-label">Sensor Channels</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-value" x-text="$store.dashboard.relays.length"></div>
+                    <div class="stat-label">Relay Channels</div>
+                </div>
+            </div>
+
+            <!-- System Health -->
+            <div class="card" x-show="$store.dashboard.health">
+                <div class="card-header">
+                    <h3 class="card-title">System Health</h3>
+                </div>
+                <div class="grid-4">
+                    <div>
+                        <div class="sensor-label">CPU Usage</div>
+                        <div class="sensor-value" x-text="($store.dashboard.health?.cpu_percent || 0).toFixed(1) + '%'"></div>
+                    </div>
+                    <div>
+                        <div class="sensor-label">Memory</div>
+                        <div class="sensor-value" x-text="($store.dashboard.health?.memory_percent || 0).toFixed(1) + '%'"></div>
+                    </div>
+                    <div>
+                        <div class="sensor-label">Disk</div>
+                        <div class="sensor-value" x-text="($store.dashboard.health?.disk_percent || 0).toFixed(1) + '%'"></div>
+                    </div>
+                    <div>
+                        <div class="sensor-label">Uptime</div>
+                        <div class="sensor-value" x-text="Math.floor(($store.dashboard.status?.uptime_seconds || 0) / 60) + 'm'"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Sensor View -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Sensor Readings</h3>
+                </div>
+                <div class="grid-4">
+                    <template x-for="reading in $store.dashboard.readings" :key="reading.channel_id">
+                        <div class="sensor-card card">
+                            <div class="sensor-label" x-text="reading.channel_name"></div>
+                            <div class="sensor-value">
+                                <span x-text="reading.value.toFixed(1)"></span>
+                                <span class="sensor-unit" x-text="reading.unit || ''"></span>
+                            </div>
+                            <div class="sensor-label" x-text="reading.device_name"></div>
+                        </div>
+                    </template>
+                </div>
+                <div class="empty-state" x-show="$store.dashboard.readings.length === 0">
+                    No sensor readings available
+                </div>
+            </div>
+
+            <!-- Quick Relay View -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Relay Controls</h3>
+                </div>
+                <div class="grid-3">
+                    <template x-for="relay in $store.dashboard.relays" :key="relay.channel_id">
+                        <div class="relay-card card">
+                            <div class="relay-info">
+                                <span class="relay-name" x-text="relay.channel_name"></span>
+                                <span class="relay-status" x-text="relay.source ? 'via ' + relay.source : ''"></span>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" :checked="relay.state"
+                                       @change="$store.dashboard.toggleRelay(relay.channel_id, relay.state)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </template>
+                </div>
+                <div class="empty-state" x-show="$store.dashboard.relays.length === 0">
+                    No relay channels configured
+                </div>
+            </div>
+        </div>
+
+        <!-- Sensors Tab -->
+        <div x-show="$store.dashboard.currentTab === 'sensors'">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Sensor Readings</h3>
+                </div>
+                <div class="grid-3">
+                    <template x-for="reading in $store.dashboard.readings" :key="reading.channel_id">
+                        <div class="sensor-card card">
+                            <div class="sensor-label" x-text="reading.channel_name"></div>
+                            <div class="sensor-value">
+                                <span x-text="reading.value.toFixed(2)"></span>
+                                <span class="sensor-unit" x-text="reading.unit || ''"></span>
+                            </div>
+                            <div class="sensor-label" x-text="reading.device_name"></div>
+                            <div class="sensor-label" style="margin-top: 0.5rem;">
+                                <span class="badge badge-info" x-text="reading.category || 'general'"></span>
+                            </div>
+                            <div class="sensor-label" x-text="$store.dashboard.formatTime(reading.timestamp)"></div>
+                        </div>
+                    </template>
+                </div>
+                <div class="empty-state" x-show="$store.dashboard.readings.length === 0">
+                    No sensor readings available
+                </div>
+            </div>
+        </div>
+
+        <!-- Relays Tab -->
+        <div x-show="$store.dashboard.currentTab === 'relays'">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Relay Controls</h3>
+                </div>
+                <div class="grid-2">
+                    <template x-for="relay in $store.dashboard.relays" :key="relay.channel_id">
+                        <div class="relay-card card">
+                            <div class="relay-info">
+                                <span class="relay-name" x-text="relay.channel_name"></span>
+                                <span class="relay-status">
+                                    <span class="status-dot" :class="relay.state ? 'online' : 'offline'"></span>
+                                    <span x-text="relay.state ? 'ON' : 'OFF'"></span>
+                                    <span x-show="relay.source"> - via <span x-text="relay.source"></span></span>
+                                </span>
+                                <span class="relay-status" x-text="'Last: ' + $store.dashboard.formatTime(relay.last_changed)"></span>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" :checked="relay.state"
+                                       @change="$store.dashboard.toggleRelay(relay.channel_id, relay.state)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </template>
+                </div>
+                <div class="empty-state" x-show="$store.dashboard.relays.length === 0">
+                    No relay channels configured
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedules Tab -->
+        <div x-show="$store.dashboard.currentTab === 'schedules'">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Schedules</h3>
+                    <button class="btn btn-primary" @click="$store.dashboard.openScheduleModal()">Add Schedule</button>
+                </div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Channel</th>
+                            <th>Time On</th>
+                            <th>Time Off</th>
+                            <th>Days</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="schedule in $store.dashboard.schedules" :key="schedule.id">
+                            <tr>
+                                <td x-text="schedule.name || 'Unnamed'"></td>
+                                <td x-text="schedule.channel_name || $store.dashboard.getChannelName(schedule.channel_id)"></td>
+                                <td x-text="schedule.time_on"></td>
+                                <td x-text="schedule.time_off"></td>
+                                <td x-text="$store.dashboard.getDaysText(schedule.days_of_week)"></td>
+                                <td>
+                                    <span class="badge" :class="schedule.enabled ? 'badge-success' : 'badge-danger'"
+                                          x-text="schedule.enabled ? 'Enabled' : 'Disabled'"></span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-secondary" @click="$store.dashboard.toggleSchedule(schedule)"
+                                            x-text="schedule.enabled ? 'Disable' : 'Enable'"></button>
+                                    <button class="btn btn-sm btn-secondary" @click="$store.dashboard.openScheduleModal(schedule)">Edit</button>
+                                    <button class="btn btn-sm btn-danger" @click="$store.dashboard.deleteSchedule(schedule.id)">Delete</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <div class="empty-state" x-show="$store.dashboard.schedules.length === 0">
+                    No schedules configured. Click "Add Schedule" to create one.
+                </div>
+            </div>
+        </div>
+
+        <!-- Triggers Tab -->
+        <div x-show="$store.dashboard.currentTab === 'triggers'">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Triggers</h3>
+                    <button class="btn btn-primary" @click="$store.dashboard.openTriggerModal()">Add Trigger</button>
+                </div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Condition</th>
+                            <th>Action</th>
+                            <th>Cooldown</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="trigger in $store.dashboard.triggers" :key="trigger.id">
+                            <tr>
+                                <td x-text="trigger.name || 'Unnamed'"></td>
+                                <td>
+                                    <span x-text="trigger.source_channel_name || $store.dashboard.getChannelName(trigger.source_channel_id)"></span>
+                                    <span x-text="trigger.operator"></span>
+                                    <span x-text="trigger.threshold"></span>
+                                </td>
+                                <td>
+                                    <span x-text="trigger.target_channel_name || $store.dashboard.getChannelName(trigger.target_channel_id)"></span>
+                                    <span class="badge" :class="trigger.action === 'on' ? 'badge-success' : 'badge-danger'"
+                                          x-text="trigger.action.toUpperCase()"></span>
+                                </td>
+                                <td x-text="(trigger.cooldown || 300) + 's'"></td>
+                                <td>
+                                    <span class="badge" :class="trigger.enabled ? 'badge-success' : 'badge-danger'"
+                                          x-text="trigger.enabled ? 'Enabled' : 'Disabled'"></span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-secondary" @click="$store.dashboard.toggleTrigger(trigger)"
+                                            x-text="trigger.enabled ? 'Disable' : 'Enable'"></button>
+                                    <button class="btn btn-sm btn-secondary" @click="$store.dashboard.openTriggerModal(trigger)">Edit</button>
+                                    <button class="btn btn-sm btn-danger" @click="$store.dashboard.deleteTrigger(trigger.id)">Delete</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <div class="empty-state" x-show="$store.dashboard.triggers.length === 0">
+                    No triggers configured. Click "Add Trigger" to create one.
+                </div>
+            </div>
+        </div>
+
+        <!-- Devices Tab -->
+        <div x-show="$store.dashboard.currentTab === 'devices'">
+            <!-- Gateways -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Gateways</h3>
+                </div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>IP Address</th>
+                            <th>Port</th>
+                            <th>Status</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="gateway in $store.dashboard.gateways" :key="gateway.id">
+                            <tr>
+                                <td x-text="gateway.name"></td>
+                                <td x-text="gateway.ip_address"></td>
+                                <td x-text="gateway.port"></td>
+                                <td>
+                                    <span class="status-dot" :class="gateway.online ? 'online' : 'offline'"></span>
+                                    <span x-text="gateway.online ? 'Online' : 'Offline'"></span>
+                                </td>
+                                <td x-text="$store.dashboard.formatDate(gateway.last_seen)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Devices -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Devices</h3>
+                </div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Model</th>
+                            <th>Address</th>
+                            <th>Status</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="device in $store.dashboard.devices" :key="device.id">
+                            <tr>
+                                <td x-text="device.name"></td>
+                                <td>
+                                    <span class="badge" :class="device.device_type === 'sensor' ? 'badge-info' : 'badge-warning'"
+                                          x-text="device.device_type"></span>
+                                </td>
+                                <td x-text="device.model"></td>
+                                <td x-text="device.modbus_address"></td>
+                                <td>
+                                    <span class="status-dot" :class="device.online ? 'online' : 'offline'"></span>
+                                    <span x-text="device.online ? 'Online' : 'Offline'"></span>
+                                </td>
+                                <td x-text="$store.dashboard.formatDate(device.last_seen)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Schedule Modal -->
+    <div class="modal-overlay" x-show="$store.dashboard.showScheduleModal" @click.self="$store.dashboard.showScheduleModal = false">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" x-text="$store.dashboard.editingSchedule?.id ? 'Edit Schedule' : 'New Schedule'"></h3>
+                <button class="modal-close" @click="$store.dashboard.showScheduleModal = false">&times;</button>
+            </div>
+            <div x-show="$store.dashboard.editingSchedule">
+                <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-input" x-model="$store.dashboard.editingSchedule.name" placeholder="Schedule name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Relay Channel</label>
+                    <select class="form-select" x-model="$store.dashboard.editingSchedule.channel_id">
+                        <option value="">Select channel...</option>
+                        <template x-for="ch in $store.dashboard.relayChannels" :key="ch.id">
+                            <option :value="ch.id" x-text="ch.name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Time On</label>
+                        <input type="time" class="form-input" x-model="$store.dashboard.editingSchedule.time_on">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Time Off</label>
+                        <input type="time" class="form-input" x-model="$store.dashboard.editingSchedule.time_off">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Days of Week</label>
+                    <input type="text" class="form-input" x-model="$store.dashboard.editingSchedule.days_of_week"
+                           placeholder="[0,1,2,3,4,5,6]">
+                    <small style="color: var(--gray-500)">JSON array: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun</small>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" x-model="$store.dashboard.editingSchedule.enabled">
+                        Enabled
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @click="$store.dashboard.showScheduleModal = false">Cancel</button>
+                <button class="btn btn-primary" @click="$store.dashboard.saveSchedule()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trigger Modal -->
+    <div class="modal-overlay" x-show="$store.dashboard.showTriggerModal" @click.self="$store.dashboard.showTriggerModal = false">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" x-text="$store.dashboard.editingTrigger?.id ? 'Edit Trigger' : 'New Trigger'"></h3>
+                <button class="modal-close" @click="$store.dashboard.showTriggerModal = false">&times;</button>
+            </div>
+            <div x-show="$store.dashboard.editingTrigger">
+                <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-input" x-model="$store.dashboard.editingTrigger.name" placeholder="Trigger name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Source Sensor</label>
+                    <select class="form-select" x-model="$store.dashboard.editingTrigger.source_channel_id">
+                        <option value="">Select sensor...</option>
+                        <template x-for="ch in $store.dashboard.sensorChannels" :key="ch.id">
+                            <option :value="ch.id" x-text="ch.name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Operator</label>
+                        <select class="form-select" x-model="$store.dashboard.editingTrigger.operator">
+                            <option value=">">&gt; (greater than)</option>
+                            <option value=">=">&gt;= (greater or equal)</option>
+                            <option value="<">&lt; (less than)</option>
+                            <option value="<=">&lt;= (less or equal)</option>
+                            <option value="==">== (equals)</option>
+                            <option value="!=">!= (not equals)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Threshold</label>
+                        <input type="number" step="0.1" class="form-input" x-model="$store.dashboard.editingTrigger.threshold">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Target Relay</label>
+                    <select class="form-select" x-model="$store.dashboard.editingTrigger.target_channel_id">
+                        <option value="">Select relay...</option>
+                        <template x-for="ch in $store.dashboard.relayChannels" :key="ch.id">
+                            <option :value="ch.id" x-text="ch.name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Action</label>
+                        <select class="form-select" x-model="$store.dashboard.editingTrigger.action">
+                            <option value="on">Turn ON</option>
+                            <option value="off">Turn OFF</option>
+                            <option value="toggle">Toggle</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Cooldown (seconds)</label>
+                        <input type="number" class="form-input" x-model="$store.dashboard.editingTrigger.cooldown">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" x-model="$store.dashboard.editingTrigger.enabled">
+                        Enabled
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @click="$store.dashboard.showTriggerModal = false">Cancel</button>
+                <button class="btn btn-primary" @click="$store.dashboard.saveTrigger()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container">
+        <template x-for="toast in $store.dashboard.toasts" :key="toast.id">
+            <div class="toast" :class="toast.type" x-text="toast.message"></div>
+        </template>
+    </div>
+</body>
+</html>

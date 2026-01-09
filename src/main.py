@@ -11,9 +11,12 @@ import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .core.database import Database
@@ -33,7 +36,6 @@ logging.basicConfig(
 # Add file handler if log directory exists
 if settings.log_file:
     try:
-        from pathlib import Path
         log_path = Path(settings.log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         file_handler = logging.FileHandler(settings.log_file)
@@ -152,6 +154,24 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router)
+
+# Mount static files for dashboard
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+    logger.info(f"Static files mounted from {static_path}")
+
+
+@app.get("/dashboard")
+async def dashboard():
+    """Serve the web dashboard"""
+    index_path = Path(__file__).parent / "static" / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path, media_type="text/html")
+    return JSONResponse(
+        status_code=404,
+        content={"detail": "Dashboard not found. Static files may not be installed."}
+    )
 
 
 @app.get("/")
