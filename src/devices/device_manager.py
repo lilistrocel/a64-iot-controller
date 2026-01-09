@@ -230,18 +230,37 @@ class DeviceManager:
         Returns dict of channel_id -> value
         """
         readings = {}
+        model_lower = model.lower() if model else ""
 
-        # Soil 7-in-1 sensor (common model)
-        if "soil" in model or "7in1" in model:
-            # Read 7 registers starting at 0x0000
+        # SHT20 Temperature/Humidity sensor
+        if "sht20" in model_lower:
+            # SHT20 uses INPUT registers at address 1
+            response = await client.read_input_registers(
+                address=1,
+                count=2,
+                slave=slave
+            )
+
+            if response.success and response.data:
+                for channel in channels:
+                    ch_type = channel["channel_type"].lower()
+                    if "temperature" in ch_type:
+                        readings[channel["id"]] = response.data[0] * 0.1
+                    elif "humidity" in ch_type:
+                        readings[channel["id"]] = response.data[1] * 0.1
+
+        # Soil 7-in-1 sensor (NPK, pH, EC, moisture, temp)
+        elif "soil" in model_lower or "7in1" in model_lower:
+            # This sensor uses HOLDING registers starting at address 6
             response = await client.read_holding_registers(
-                address=0x0000,
+                address=6,
                 count=7,
                 slave=slave
             )
 
             if response.success and response.data:
                 # Map registers to channel types
+                # Register 6: moisture, 7: temp, 8: EC, 9: pH, 10: N, 11: P, 12: K
                 register_map = {
                     0: ("moisture", 0.1),      # Moisture %
                     1: ("temperature", 0.1),   # Temp °C
@@ -271,7 +290,6 @@ class DeviceManager:
                 )
 
                 if response.success and response.data:
-                    # Apply simple scaling (could be enhanced with channel config)
                     readings[channel["id"]] = response.data[0] * 0.1
 
         return readings
