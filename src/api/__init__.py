@@ -12,6 +12,7 @@ from .triggers import router as triggers_router
 from .health import router as health_router
 from .discovery import router as discovery_router
 from .models import router as models_router
+from .a64core import router as a64core_router
 
 # Create main API router
 api_router = APIRouter(prefix="/api")
@@ -27,5 +28,6 @@ api_router.include_router(schedules_router, prefix="/schedules", tags=["Schedule
 api_router.include_router(triggers_router, prefix="/triggers", tags=["Triggers"])
 api_router.include_router(discovery_router, prefix="/discovery", tags=["Discovery"])
 api_router.include_router(models_router, prefix="/models", tags=["Sensor Models"])
+api_router.include_router(a64core_router, prefix="/a64core", tags=["A64Core Integration"])
 
 __all__ = ["api_router"]

@@ -742,7 +742,7 @@ class Database:
         rows = await self.execute(
             """
             SELECT r.*, c.name as channel_name, c.unit, c.category,
-                   d.name as device_name
+                   c.channel_type, c.device_id, d.name as device_name
             FROM readings r
             JOIN channels c ON r.channel_id = c.id
             JOIN devices d ON c.device_id = d.id

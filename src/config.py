@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     )
 
     # =========================================================================
+    # Controller Identity
+    # =========================================================================
+    controller_id: str = Field(default="iot-controller-1", description="Unique controller identifier")
+    controller_name: str = Field(default="A64 IoT Controller", description="Human-readable controller name")
+
+    # =========================================================================
     # API Server
     # =========================================================================
     api_host: str = Field(default="0.0.0.0", description="API server bind address")
