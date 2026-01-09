@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>A64 IoT Controller Dashboard</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="/static/js/api.js"></script>
     <script src="/static/js/app.js"></script>
@@ -100,7 +101,8 @@
                 </div>
                 <div class="grid-4">
                     <template x-for="reading in $store.dashboard.readings" :key="reading.channel_id">
-                        <div class="sensor-card card">
+                        <div class="sensor-card card clickable" @click="$store.dashboard.showHistory(reading)"
+                             title="Click to view history">
                             <div class="sensor-label" x-text="reading.channel_name"></div>
                             <div class="sensor-value">
                                 <span x-text="reading.value.toFixed(1)"></span>
@@ -146,10 +148,12 @@
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Sensor Readings</h3>
+                    <span class="last-update">Click a sensor to view history</span>
                 </div>
                 <div class="grid-3">
                     <template x-for="reading in $store.dashboard.readings" :key="reading.channel_id">
-                        <div class="sensor-card card">
+                        <div class="sensor-card card clickable" @click="$store.dashboard.showHistory(reading)"
+                             title="Click to view history">
                             <div class="sensor-label" x-text="reading.channel_name"></div>
                             <div class="sensor-value">
                                 <span x-text="reading.value.toFixed(2)"></span>
@@ -496,6 +500,46 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" @click="$store.dashboard.showTriggerModal = false">Cancel</button>
                 <button class="btn btn-primary" @click="$store.dashboard.saveTrigger()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div class="modal-overlay" x-show="$store.dashboard.showHistoryModal" @click.self="$store.dashboard.closeHistory()">
+        <div class="modal" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <span x-text="$store.dashboard.historyChannel?.channel_name || 'Sensor'"></span> History
+                </h3>
+                <button class="modal-close" @click="$store.dashboard.closeHistory()">&times;</button>
+            </div>
+            <div class="history-controls" style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center;">
+                <label class="form-label" style="margin: 0;">Time Range:</label>
+                <select class="form-select" style="width: auto;" x-model="$store.dashboard.historyHours"
+                        @change="$store.dashboard.loadHistory()">
+                    <option value="1">Last 1 hour</option>
+                    <option value="6">Last 6 hours</option>
+                    <option value="12">Last 12 hours</option>
+                    <option value="24">Last 24 hours</option>
+                    <option value="48">Last 48 hours</option>
+                    <option value="168">Last 7 days</option>
+                </select>
+                <span class="last-update" x-show="$store.dashboard.historyStats">
+                    Min: <strong x-text="$store.dashboard.historyStats?.min?.toFixed(1) || '-'"></strong> |
+                    Max: <strong x-text="$store.dashboard.historyStats?.max?.toFixed(1) || '-'"></strong> |
+                    Avg: <strong x-text="$store.dashboard.historyStats?.avg?.toFixed(1) || '-'"></strong>
+                    <span x-text="$store.dashboard.historyChannel?.unit || ''"></span>
+                </span>
+            </div>
+            <div style="position: relative; height: 350px;">
+                <canvas id="historyChart"></canvas>
+            </div>
+            <div class="empty-state" x-show="$store.dashboard.historyLoading">
+                <div class="spinner"></div>
+                Loading history...
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @click="$store.dashboard.closeHistory()">Close</button>
             </div>
         </div>
     </div>

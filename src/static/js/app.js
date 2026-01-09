@@ -33,6 +33,15 @@ document.addEventListener('alpine:init', () => {
         editingSchedule: null,
         editingTrigger: null,
 
+        // History
+        showHistoryModal: false,
+        historyChannel: null,
+        historyData: [],
+        historyStats: null,
+        historyHours: '24',
+        historyLoading: false,
+        historyChart: null,
+
         // Initialize
         async init() {
             await this.refresh();
@@ -205,6 +214,116 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 this.showToast('Error: ' + e.message, 'error');
             }
+        },
+
+        // History
+        async showHistory(reading) {
+            this.historyChannel = reading;
+            this.showHistoryModal = true;
+            await this.loadHistory();
+        },
+
+        closeHistory() {
+            this.showHistoryModal = false;
+            if (this.historyChart) {
+                this.historyChart.destroy();
+                this.historyChart = null;
+            }
+        },
+
+        async loadHistory() {
+            if (!this.historyChannel) return;
+
+            this.historyLoading = true;
+
+            try {
+                const [readings, stats] = await Promise.all([
+                    api.fetchChannelReadings(this.historyChannel.channel_id, this.historyHours),
+                    api.fetchChannelStats(this.historyChannel.channel_id, this.historyHours)
+                ]);
+
+                this.historyData = readings;
+                this.historyStats = stats;
+
+                // Render chart after a small delay to ensure canvas is visible
+                setTimeout(() => this.renderChart(), 100);
+            } catch (e) {
+                this.showToast('Error loading history: ' + e.message, 'error');
+            }
+
+            this.historyLoading = false;
+        },
+
+        renderChart() {
+            const canvas = document.getElementById('historyChart');
+            if (!canvas || !this.historyData.length) return;
+
+            // Destroy existing chart
+            if (this.historyChart) {
+                this.historyChart.destroy();
+            }
+
+            const ctx = canvas.getContext('2d');
+            const labels = this.historyData.map(d => new Date(d.timestamp).toLocaleString());
+            const data = this.historyData.map(d => d.value);
+
+            this.historyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: `${this.historyChannel.channel_name} (${this.historyChannel.unit || ''})`,
+                        data: data,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: this.historyData.length > 100 ? 0 : 3,
+                        pointHoverRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    return `${context.parsed.y.toFixed(2)} ${this.historyChannel.unit || ''}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                maxTicksLimit: 10
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: this.historyChannel.unit || 'Value'
+                            }
+                        }
+                    }
+                }
+            });
         },
 
         // Toast notifications

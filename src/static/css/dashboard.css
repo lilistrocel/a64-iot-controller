@@ -513,3 +513,18 @@ body {
     font-size: 0.875rem;
     color: var(--gray-500);
 }
+
+/* Clickable cards */
+.clickable {
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.clickable:active {
+    transform: translateY(0);
+}
