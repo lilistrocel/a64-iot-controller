@@ -48,29 +48,29 @@ async def create_trigger(
     api_key: APIKeyDep
 ) -> Trigger:
     """Create a new trigger"""
-    # Verify sensor channel exists
-    sensor_channel = await db.get_channel(trigger.sensor_channel_id)
-    if not sensor_channel:
+    # Verify source channel exists
+    source_channel = await db.get_channel(trigger.source_channel_id)
+    if not source_channel:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Sensor channel {trigger.sensor_channel_id} not found"
+            detail=f"Source channel {trigger.source_channel_id} not found"
         )
 
-    if sensor_channel["channel_type"] != "sensor":
+    if source_channel["channel_type"] == "relay":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Trigger source must be a sensor channel"
         )
 
-    # Verify relay channel exists
-    relay_channel = await db.get_channel(trigger.relay_channel_id)
-    if not relay_channel:
+    # Verify target channel exists
+    target_channel = await db.get_channel(trigger.target_channel_id)
+    if not target_channel:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Relay channel {trigger.relay_channel_id} not found"
+            detail=f"Target channel {trigger.target_channel_id} not found"
         )
 
-    if relay_channel["channel_type"] != "relay":
+    if target_channel["channel_type"] != "relay":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Trigger target must be a relay channel"
