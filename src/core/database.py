@@ -578,6 +578,23 @@ class Database:
         )
         return [dict(row) for row in rows]
 
+    async def get_latest_reading(self, channel_id: str) -> Optional[dict]:
+        """Get the latest reading for a specific channel"""
+        row = await self.execute(
+            """
+            SELECT r.*, c.name as channel_name, c.unit, c.category,
+                   d.name as device_name
+            FROM readings r
+            JOIN channels c ON r.channel_id = c.id
+            JOIN devices d ON c.device_id = d.id
+            WHERE r.channel_id = ?
+            ORDER BY r.timestamp DESC LIMIT 1
+            """,
+            (channel_id,),
+            fetch_one=True
+        )
+        return dict(row) if row else None
+
     async def get_channel_readings(
         self,
         channel_id: str,

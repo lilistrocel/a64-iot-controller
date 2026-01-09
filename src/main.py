@@ -19,6 +19,7 @@ from .config import settings
 from .core.database import Database
 from .api import api_router
 from .devices import DeviceManager
+from .scheduler import Scheduler
 
 # Configure logging
 logging.basicConfig(
@@ -48,12 +49,13 @@ logger = logging.getLogger(__name__)
 # Global instances
 db: Database | None = None
 device_manager: DeviceManager | None = None
+scheduler: Scheduler | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup and shutdown."""
-    global db, device_manager
+    global db, device_manager, scheduler
 
     logger.info("=" * 60)
     logger.info("A64 IoT Controller Starting...")
@@ -80,9 +82,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     device_manager = DeviceManager(db)
     await device_manager.start()
 
+    # Start scheduler
+    logger.info("Starting scheduler...")
+    scheduler = Scheduler(db, device_manager)
+    await scheduler.start()
+
     # Store in app state for dependency injection
     app.state.db = db
     app.state.device_manager = device_manager
+    app.state.scheduler = scheduler
 
     logger.info(f"API server ready on {settings.api_host}:{settings.api_port}")
     logger.info("=" * 60)
@@ -102,6 +110,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down...")
+
+    # Stop scheduler first (before device manager)
+    if scheduler:
+        await scheduler.stop()
+        logger.info("Scheduler stopped")
 
     # Stop device manager
     if device_manager:
