@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     # =========================================================================
     # Dashboard
     # =========================================================================
+    dashboard_enabled: bool = Field(default=True, description="Enable dashboard and API docs")
     dashboard_port: int = Field(default=8080, description="Dashboard web UI port")
     dashboard_user: str = Field(default="admin", description="Dashboard username")
     dashboard_password: str = Field(default="", description="Dashboard password")
