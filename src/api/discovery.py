@@ -5,12 +5,16 @@ Scan RS485 bus for Modbus devices.
 """
 
 import asyncio
+import logging
 from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 
 from .deps import DatabaseDep, APIKeyDep
+from ..devices.modbus_client import ModbusClient
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -54,18 +58,76 @@ async def probe_modbus_device(
     Probe a single Modbus address to check if a device exists.
 
     Returns device info if found, None otherwise.
-
-    This is a placeholder - actual implementation will use pymodbus.
+    A device is considered "found" if it responds to any Modbus function,
+    even with an exception (which still indicates a device is present).
     """
-    # TODO: Implement actual Modbus probing with pymodbus
-    # This will:
-    # 1. Try to read holding registers to detect device
-    # 2. Read device identification registers if available
-    # 3. Detect device type based on register layout
+    client = ModbusClient(
+        host=host,
+        port=port,
+        timeout=timeout_ms / 1000.0,
+        retries=1
+    )
 
-    # For now, return None (no device found)
-    # Real implementation will be in Phase 2: Device Manager
-    return None
+    try:
+        connected = await client.connect()
+        if not connected:
+            return None
+
+        device_info = {
+            "address": address,
+            "device_type": None,
+            "model": None,
+            "channels": 0,
+            "responds_to": []
+        }
+
+        # Try reading holding registers (function 0x03)
+        # Most sensors use this
+        response = await client.read_holding_registers(
+            address=0,
+            count=1,
+            slave=address
+        )
+        if response.success:
+            device_info["responds_to"].append("holding_registers")
+            device_info["device_type"] = "sensor"
+            # Try to read more registers to identify device
+            full_response = await client.read_holding_registers(
+                address=0,
+                count=7,
+                slave=address
+            )
+            if full_response.success and full_response.data:
+                # 7 registers suggests Soil 7-in-1 sensor
+                device_info["model"] = "sensor"
+                device_info["channels"] = len(full_response.data)
+
+        # Try reading coils (function 0x01)
+        # Relay controllers typically use this
+        coil_response = await client.read_coils(
+            address=0,
+            count=8,
+            slave=address
+        )
+        if coil_response.success:
+            device_info["responds_to"].append("coils")
+            if coil_response.data:
+                device_info["device_type"] = "relay_controller"
+                device_info["channels"] = len(coil_response.data)
+
+        # If device responded to anything, return info
+        if device_info["responds_to"]:
+            logger.info(f"Found device at address {address}: {device_info}")
+            return device_info
+
+        return None
+
+    except Exception as e:
+        logger.debug(f"Error probing address {address}: {e}")
+        return None
+
+    finally:
+        await client.disconnect()
 
 
 @router.post("/scan", response_model=DiscoveryResult)
