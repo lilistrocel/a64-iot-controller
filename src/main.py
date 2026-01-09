@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize database
     logger.info(f"Initializing database: {settings.database_path}")
     db = Database(settings.database_path)
-    await db.initialize()
+    await db.connect()
 
     # Run startup recovery if enabled
     if settings.recover_relay_states:
