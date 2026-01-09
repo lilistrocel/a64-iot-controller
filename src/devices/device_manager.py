@@ -427,6 +427,12 @@ class DeviceManager:
             logger.info(
                 f"Relay {channel['name']} set to {'ON' if state else 'OFF'}"
             )
+            # Update device online status
+            device_id = channel.get("device_id")
+            if device_id:
+                await self.db.update_device_status(
+                    device_id, online=True, last_seen=datetime.now()
+                )
             return True
         else:
             # Fallback: try writing to holding register
@@ -441,6 +447,12 @@ class DeviceManager:
                     f"Relay {channel['name']} set to {'ON' if state else 'OFF'} "
                     f"(via register)"
                 )
+                # Update device online status
+                device_id = channel.get("device_id")
+                if device_id:
+                    await self.db.update_device_status(
+                        device_id, online=True, last_seen=datetime.now()
+                    )
                 return True
 
         logger.error(
