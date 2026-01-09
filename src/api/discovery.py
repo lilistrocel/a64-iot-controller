@@ -101,7 +101,7 @@ async def scan_for_devices(
 
         try:
             device_info = await probe_modbus_device(
-                host=gateway["host"],
+                host=gateway["ip_address"],
                 port=gateway["port"],
                 address=address,
                 timeout_ms=request.timeout_ms
@@ -179,7 +179,7 @@ async def test_gateway_connection(
     try:
         # Try to open a TCP connection
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(gateway["host"], gateway["port"]),
+            asyncio.open_connection(gateway["ip_address"], gateway["port"]),
             timeout=5.0
         )
         writer.close()
@@ -187,7 +187,7 @@ async def test_gateway_connection(
 
         return {
             "gateway_id": gateway_id,
-            "host": gateway["host"],
+            "host": gateway["ip_address"],
             "port": gateway["port"],
             "status": "connected",
             "message": "Gateway is reachable"
@@ -196,7 +196,7 @@ async def test_gateway_connection(
     except asyncio.TimeoutError:
         return {
             "gateway_id": gateway_id,
-            "host": gateway["host"],
+            "host": gateway["ip_address"],
             "port": gateway["port"],
             "status": "timeout",
             "message": "Connection timed out after 5 seconds"
@@ -205,7 +205,7 @@ async def test_gateway_connection(
     except ConnectionRefusedError:
         return {
             "gateway_id": gateway_id,
-            "host": gateway["host"],
+            "host": gateway["ip_address"],
             "port": gateway["port"],
             "status": "refused",
             "message": "Connection refused - gateway may be offline or port is wrong"
@@ -214,7 +214,7 @@ async def test_gateway_connection(
     except Exception as e:
         return {
             "gateway_id": gateway_id,
-            "host": gateway["host"],
+            "host": gateway["ip_address"],
             "port": gateway["port"],
             "status": "error",
             "message": f"Connection failed: {str(e)}"
