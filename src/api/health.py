@@ -113,3 +113,21 @@ async def status() -> Dict[str, Any]:
         "version": __version__,
         "uptime_seconds": round(time.time() - _start_time, 2)
     }
+
+
+@router.get("/devices/status")
+async def device_manager_status() -> Dict[str, Any]:
+    """Get device manager status including gateway connections"""
+    from fastapi import Request
+    from starlette.requests import Request as StarletteRequest
+
+    # Import at runtime to avoid circular imports
+    from ..main import device_manager
+
+    if device_manager is None:
+        return {
+            "status": "not_initialized",
+            "message": "Device manager not yet started"
+        }
+
+    return device_manager.get_status()

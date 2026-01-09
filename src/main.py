@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from .config import settings
 from .core.database import Database
 from .api import api_router
+from .devices import DeviceManager
 
 # Configure logging
 logging.basicConfig(
@@ -44,14 +45,15 @@ if settings.log_file:
 
 logger = logging.getLogger(__name__)
 
-# Global database instance
+# Global instances
 db: Database | None = None
+device_manager: DeviceManager | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup and shutdown."""
-    global db
+    global db, device_manager
 
     logger.info("=" * 60)
     logger.info("A64 IoT Controller Starting...")
@@ -73,8 +75,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as e:
             logger.error(f"Startup recovery failed: {e}")
 
-    # Store database in app state for dependency injection
+    # Start device manager
+    logger.info("Starting device manager...")
+    device_manager = DeviceManager(db)
+    await device_manager.start()
+
+    # Store in app state for dependency injection
     app.state.db = db
+    app.state.device_manager = device_manager
 
     logger.info(f"API server ready on {settings.api_host}:{settings.api_port}")
     logger.info("=" * 60)
@@ -94,6 +102,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down...")
+
+    # Stop device manager
+    if device_manager:
+        await device_manager.stop()
+        logger.info("Device manager stopped")
 
     # Close database
     if db:
