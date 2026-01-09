@@ -58,7 +58,7 @@ async def get_aggregated_devices(db: DatabaseDep) -> Dict[str, Any]:
 
     # Get all devices to determine online status
     all_devices = await db.get_all_devices()
-    device_status = {d["id"]: d.get("online", False) for d in all_devices}
+    device_status = {d["id"]: bool(d.get("online", False)) for d in all_devices}
 
     # Group sensor readings by device
     sensor_devices: Dict[str, Dict[str, Any]] = {}
