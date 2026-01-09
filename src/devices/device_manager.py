@@ -259,25 +259,24 @@ class DeviceManager:
             )
 
             if response.success and response.data:
-                # Map registers to channel types
+                # Map registers to channel types (exact match required)
                 # Register 6: moisture, 7: temp, 8: EC, 9: pH, 10: N, 11: P, 12: K
                 register_map = {
-                    0: ("moisture", 0.1),      # Moisture %
-                    1: ("temperature", 0.1),   # Temp °C
-                    2: ("conductivity", 1),    # EC µS/cm
-                    3: ("ph", 0.1),            # pH
-                    4: ("nitrogen", 1),        # N mg/kg
-                    5: ("phosphorus", 1),      # P mg/kg
-                    6: ("potassium", 1),       # K mg/kg
+                    "moisture": (0, 0.1),       # Moisture %
+                    "temperature": (1, 0.01),   # Temp °C (raw is *100)
+                    "conductivity": (2, 1),     # EC µS/cm
+                    "ph": (3, 0.01),            # pH (raw is *100)
+                    "nitrogen": (4, 1),         # N mg/kg
+                    "phosphorus": (5, 1),       # P mg/kg
+                    "potassium": (6, 1),        # K mg/kg
                 }
 
                 for channel in channels:
                     ch_type = channel["channel_type"].lower()
-                    for reg_idx, (sensor_type, scale) in register_map.items():
-                        if sensor_type in ch_type:
-                            raw_value = response.data[reg_idx]
-                            readings[channel["id"]] = raw_value * scale
-                            break
+                    if ch_type in register_map:
+                        reg_idx, scale = register_map[ch_type]
+                        raw_value = response.data[reg_idx]
+                        readings[channel["id"]] = raw_value * scale
 
         # Generic sensor - read holding registers based on channel_num
         else:
