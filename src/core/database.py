@@ -141,6 +141,42 @@ CREATE TABLE IF NOT EXISTS esp32_sync (
     error_message TEXT
 );
 
+-- Sensor/Device Model Registry
+-- Defines how to communicate with different device models
+CREATE TABLE IF NOT EXISTS sensor_models (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    manufacturer TEXT,
+    device_type TEXT NOT NULL CHECK(device_type IN ('sensor', 'relay_controller')),
+    description TEXT,
+    default_poll_interval INTEGER DEFAULT 10,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Register Mappings for Sensor Models
+-- Defines how to read each channel type from a device model
+CREATE TABLE IF NOT EXISTS register_mappings (
+    id TEXT PRIMARY KEY,
+    model_id TEXT NOT NULL REFERENCES sensor_models(id) ON DELETE CASCADE,
+    channel_type TEXT NOT NULL,
+    channel_name TEXT NOT NULL,
+    register_address INTEGER NOT NULL,
+    register_count INTEGER DEFAULT 1,
+    function_code TEXT NOT NULL CHECK(function_code IN ('read_holding', 'read_input', 'read_coil', 'write_coil', 'write_register')),
+    data_type TEXT DEFAULT 'uint16' CHECK(data_type IN ('uint16', 'int16', 'uint32', 'int32', 'float32', 'bool')),
+    byte_order TEXT DEFAULT 'big' CHECK(byte_order IN ('big', 'little')),
+    scale REAL DEFAULT 1.0,
+    offset REAL DEFAULT 0.0,
+    unit TEXT,
+    min_value REAL,
+    max_value REAL,
+    category TEXT,
+    channel_num INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(model_id, channel_type),
+    UNIQUE(model_id, channel_num)
+);
+
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_readings_channel_time ON readings(channel_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_relay_states_channel_time ON relay_states(channel_id, timestamp DESC);
@@ -149,7 +185,92 @@ CREATE INDEX IF NOT EXISTS idx_channels_device ON channels(device_id);
 CREATE INDEX IF NOT EXISTS idx_schedules_channel ON schedules(channel_id);
 CREATE INDEX IF NOT EXISTS idx_triggers_source ON triggers(source_channel_id);
 CREATE INDEX IF NOT EXISTS idx_triggers_target ON triggers(target_channel_id);
+CREATE INDEX IF NOT EXISTS idx_register_mappings_model ON register_mappings(model_id);
 """
+
+# =============================================================================
+# Default Sensor Models - Seed Data
+# =============================================================================
+
+DEFAULT_SENSOR_MODELS = [
+    {
+        "id": "model-sht20",
+        "name": "SHT20",
+        "manufacturer": "Sensirion",
+        "device_type": "sensor",
+        "description": "RS485 Temperature and Humidity Sensor",
+        "default_poll_interval": 10
+    },
+    {
+        "id": "model-soil-7in1",
+        "name": "Soil-7in1",
+        "manufacturer": "Generic",
+        "device_type": "sensor",
+        "description": "7-in-1 Soil Sensor (NPK, pH, EC, Moisture, Temperature)",
+        "default_poll_interval": 10
+    },
+    {
+        "id": "model-esp32-6ch",
+        "name": "ESP32-6CH",
+        "manufacturer": "Custom",
+        "device_type": "relay_controller",
+        "description": "ESP32-based 6-channel Relay Controller",
+        "default_poll_interval": 5
+    }
+]
+
+DEFAULT_REGISTER_MAPPINGS = [
+    # SHT20 mappings - uses INPUT registers
+    {"id": "map-sht20-temp", "model_id": "model-sht20", "channel_type": "temperature", "channel_name": "Temperature",
+     "register_address": 1, "register_count": 1, "function_code": "read_input", "data_type": "uint16",
+     "scale": 0.1, "offset": 0, "unit": "C", "category": "environment", "channel_num": 1},
+    {"id": "map-sht20-hum", "model_id": "model-sht20", "channel_type": "humidity", "channel_name": "Humidity",
+     "register_address": 2, "register_count": 1, "function_code": "read_input", "data_type": "uint16",
+     "scale": 0.1, "offset": 0, "unit": "%", "category": "environment", "channel_num": 2},
+
+    # Soil 7-in-1 mappings - uses HOLDING registers starting at address 6
+    {"id": "map-soil-moist", "model_id": "model-soil-7in1", "channel_type": "moisture", "channel_name": "Soil Moisture",
+     "register_address": 6, "register_count": 1, "function_code": "read_holding", "data_type": "uint16",
+     "scale": 0.1, "offset": 0, "unit": "%", "category": "soil", "channel_num": 1},
+    {"id": "map-soil-temp", "model_id": "model-soil-7in1", "channel_type": "temperature", "channel_name": "Soil Temperature",
+     "register_address": 7, "register_count": 1, "function_code": "read_holding", "data_type": "uint16",
+     "scale": 0.01, "offset": 0, "unit": "C", "category": "soil", "channel_num": 2},
+    {"id": "map-soil-ec", "model_id": "model-soil-7in1", "channel_type": "conductivity", "channel_name": "Soil EC",
+     "register_address": 8, "register_count": 1, "function_code": "read_holding", "data_type": "uint16",
+     "scale": 1, "offset": 0, "unit": "uS/cm", "category": "soil", "channel_num": 3},
+    {"id": "map-soil-ph", "model_id": "model-soil-7in1", "channel_type": "ph", "channel_name": "Soil pH",
+     "register_address": 9, "register_count": 1, "function_code": "read_holding", "data_type": "uint16",
+     "scale": 0.01, "offset": 0, "unit": "pH", "category": "soil", "channel_num": 4},
+    {"id": "map-soil-n", "model_id": "model-soil-7in1", "channel_type": "nitrogen", "channel_name": "Nitrogen",
+     "register_address": 10, "register_count": 1, "function_code": "read_holding", "data_type": "uint16",
+     "scale": 1, "offset": 0, "unit": "mg/kg", "category": "soil", "channel_num": 5},
+    {"id": "map-soil-p", "model_id": "model-soil-7in1", "channel_type": "phosphorus", "channel_name": "Phosphorus",
+     "register_address": 11, "register_count": 1, "function_code": "read_holding", "data_type": "uint16",
+     "scale": 1, "offset": 0, "unit": "mg/kg", "category": "soil", "channel_num": 6},
+    {"id": "map-soil-k", "model_id": "model-soil-7in1", "channel_type": "potassium", "channel_name": "Potassium",
+     "register_address": 12, "register_count": 1, "function_code": "read_holding", "data_type": "uint16",
+     "scale": 1, "offset": 0, "unit": "mg/kg", "category": "soil", "channel_num": 7},
+
+    # ESP32-6CH relay mappings - uses COILS
+    {"id": "map-esp32-ch0", "model_id": "model-esp32-6ch", "channel_type": "relay", "channel_name": "Channel 0",
+     "register_address": 0, "register_count": 1, "function_code": "write_coil", "data_type": "bool",
+     "scale": 1, "offset": 0, "category": "relay", "channel_num": 0},
+    {"id": "map-esp32-ch1", "model_id": "model-esp32-6ch", "channel_type": "relay", "channel_name": "Channel 1",
+     "register_address": 1, "register_count": 1, "function_code": "write_coil", "data_type": "bool",
+     "scale": 1, "offset": 0, "category": "relay", "channel_num": 1},
+    {"id": "map-esp32-ch2", "model_id": "model-esp32-6ch", "channel_type": "relay", "channel_name": "Channel 2",
+     "register_address": 2, "register_count": 1, "function_code": "write_coil", "data_type": "bool",
+     "scale": 1, "offset": 0, "category": "relay", "channel_num": 2},
+    {"id": "map-esp32-ch3", "model_id": "model-esp32-6ch", "channel_type": "relay", "channel_name": "Channel 3",
+     "register_address": 3, "register_count": 1, "function_code": "write_coil", "data_type": "bool",
+     "scale": 1, "offset": 0, "category": "relay", "channel_num": 3},
+    {"id": "map-esp32-ch4", "model_id": "model-esp32-6ch", "channel_type": "relay", "channel_name": "Channel 4",
+     "register_address": 4, "register_count": 1, "function_code": "write_coil", "data_type": "bool",
+     "scale": 1, "offset": 0, "category": "relay", "channel_num": 4},
+    {"id": "map-esp32-ch5", "model_id": "model-esp32-6ch", "channel_type": "relay", "channel_name": "Channel 5",
+     "register_address": 5, "register_count": 1, "function_code": "write_coil", "data_type": "bool",
+     "scale": 1, "offset": 0, "category": "relay", "channel_num": 5},
+]
 
 
 # =============================================================================
@@ -197,6 +318,62 @@ class Database:
         """Create tables if they don't exist"""
         await self._connection.executescript(SCHEMA)
         await self._connection.commit()
+
+        # Seed default sensor models if not present
+        await self._seed_default_models()
+
+    async def _seed_default_models(self) -> None:
+        """Seed default sensor models and register mappings"""
+        # Check if models already exist
+        cursor = await self._connection.execute(
+            "SELECT COUNT(*) FROM sensor_models"
+        )
+        count = (await cursor.fetchone())[0]
+
+        if count > 0:
+            return  # Already seeded
+
+        logger.info("Seeding default sensor models...")
+
+        # Insert default models
+        for model in DEFAULT_SENSOR_MODELS:
+            await self._connection.execute(
+                """
+                INSERT OR IGNORE INTO sensor_models
+                (id, name, manufacturer, device_type, description, default_poll_interval)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    model["id"], model["name"], model.get("manufacturer"),
+                    model["device_type"], model.get("description"),
+                    model.get("default_poll_interval", 10)
+                )
+            )
+
+        # Insert default register mappings
+        for mapping in DEFAULT_REGISTER_MAPPINGS:
+            await self._connection.execute(
+                """
+                INSERT OR IGNORE INTO register_mappings
+                (id, model_id, channel_type, channel_name, register_address,
+                 register_count, function_code, data_type, byte_order,
+                 scale, offset, unit, min_value, max_value, category, channel_num)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mapping["id"], mapping["model_id"], mapping["channel_type"],
+                    mapping["channel_name"], mapping["register_address"],
+                    mapping.get("register_count", 1), mapping["function_code"],
+                    mapping.get("data_type", "uint16"), mapping.get("byte_order", "big"),
+                    mapping.get("scale", 1.0), mapping.get("offset", 0.0),
+                    mapping.get("unit"), mapping.get("min_value"),
+                    mapping.get("max_value"), mapping.get("category"),
+                    mapping["channel_num"]
+                )
+            )
+
+        await self._connection.commit()
+        logger.info(f"Seeded {len(DEFAULT_SENSOR_MODELS)} models and {len(DEFAULT_REGISTER_MAPPINGS)} mappings")
 
     async def close(self) -> None:
         """Close database connection"""
@@ -844,6 +1021,153 @@ class Database:
     async def delete_trigger(self, trigger_id: str) -> None:
         """Delete a trigger"""
         await self.execute("DELETE FROM triggers WHERE id = ?", (trigger_id,))
+
+    # =========================================================================
+    # Sensor Model Operations
+    # =========================================================================
+
+    async def get_all_sensor_models(self) -> List[dict]:
+        """Get all sensor models"""
+        rows = await self.execute(
+            "SELECT * FROM sensor_models ORDER BY name",
+            fetch_all=True
+        )
+        return [dict(row) for row in rows]
+
+    async def get_sensor_model(self, model_id: str) -> Optional[dict]:
+        """Get a sensor model by ID"""
+        row = await self.execute(
+            "SELECT * FROM sensor_models WHERE id = ?",
+            (model_id,),
+            fetch_one=True
+        )
+        return dict(row) if row else None
+
+    async def get_sensor_model_by_name(self, name: str) -> Optional[dict]:
+        """Get a sensor model by name (case-insensitive)"""
+        row = await self.execute(
+            "SELECT * FROM sensor_models WHERE LOWER(name) = LOWER(?)",
+            (name,),
+            fetch_one=True
+        )
+        return dict(row) if row else None
+
+    async def create_sensor_model(self, model: dict) -> str:
+        """Create a new sensor model"""
+        await self.execute(
+            """
+            INSERT INTO sensor_models
+            (id, name, manufacturer, device_type, description, default_poll_interval)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                model["id"],
+                model["name"],
+                model.get("manufacturer"),
+                model["device_type"],
+                model.get("description"),
+                model.get("default_poll_interval", 10)
+            )
+        )
+        return model["id"]
+
+    async def update_sensor_model(self, model_id: str, updates: dict) -> None:
+        """Update a sensor model"""
+        set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+        await self.execute(
+            f"UPDATE sensor_models SET {set_clause} WHERE id = ?",
+            (*updates.values(), model_id)
+        )
+
+    async def delete_sensor_model(self, model_id: str) -> None:
+        """Delete a sensor model (cascades to mappings)"""
+        await self.execute("DELETE FROM sensor_models WHERE id = ?", (model_id,))
+
+    # =========================================================================
+    # Register Mapping Operations
+    # =========================================================================
+
+    async def get_model_mappings(self, model_id: str) -> List[dict]:
+        """Get all register mappings for a sensor model"""
+        rows = await self.execute(
+            """
+            SELECT rm.*, sm.name as model_name
+            FROM register_mappings rm
+            JOIN sensor_models sm ON rm.model_id = sm.id
+            WHERE rm.model_id = ?
+            ORDER BY rm.channel_num
+            """,
+            (model_id,),
+            fetch_all=True
+        )
+        return [dict(row) for row in rows]
+
+    async def get_mappings_by_model_name(self, model_name: str) -> List[dict]:
+        """Get register mappings by model name (case-insensitive)"""
+        rows = await self.execute(
+            """
+            SELECT rm.*, sm.name as model_name
+            FROM register_mappings rm
+            JOIN sensor_models sm ON rm.model_id = sm.id
+            WHERE LOWER(sm.name) = LOWER(?)
+            ORDER BY rm.channel_num
+            """,
+            (model_name,),
+            fetch_all=True
+        )
+        return [dict(row) for row in rows]
+
+    async def get_register_mapping(self, mapping_id: str) -> Optional[dict]:
+        """Get a register mapping by ID"""
+        row = await self.execute(
+            "SELECT * FROM register_mappings WHERE id = ?",
+            (mapping_id,),
+            fetch_one=True
+        )
+        return dict(row) if row else None
+
+    async def create_register_mapping(self, mapping: dict) -> str:
+        """Create a new register mapping"""
+        await self.execute(
+            """
+            INSERT INTO register_mappings
+            (id, model_id, channel_type, channel_name, register_address,
+             register_count, function_code, data_type, byte_order,
+             scale, offset, unit, min_value, max_value, category, channel_num)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                mapping["id"],
+                mapping["model_id"],
+                mapping["channel_type"],
+                mapping["channel_name"],
+                mapping["register_address"],
+                mapping.get("register_count", 1),
+                mapping["function_code"],
+                mapping.get("data_type", "uint16"),
+                mapping.get("byte_order", "big"),
+                mapping.get("scale", 1.0),
+                mapping.get("offset", 0.0),
+                mapping.get("unit"),
+                mapping.get("min_value"),
+                mapping.get("max_value"),
+                mapping.get("category"),
+                mapping["channel_num"]
+            )
+        )
+        return mapping["id"]
+
+    async def update_register_mapping(self, mapping_id: str, updates: dict) -> None:
+        """Update a register mapping"""
+        set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+        await self.execute(
+            f"UPDATE register_mappings SET {set_clause} WHERE id = ?",
+            (*updates.values(), mapping_id)
+        )
+
+    async def delete_register_mapping(self, mapping_id: str) -> None:
+        """Delete a register mapping"""
+        await self.execute("DELETE FROM register_mappings WHERE id = ?", (mapping_id,))
 
 
 # =============================================================================

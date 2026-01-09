@@ -11,6 +11,7 @@ from .schedules import router as schedules_router
 from .triggers import router as triggers_router
 from .health import router as health_router
 from .discovery import router as discovery_router
+from .models import router as models_router
 
 # Create main API router
 api_router = APIRouter(prefix="/api")
@@ -25,5 +26,6 @@ api_router.include_router(relays_router, prefix="/relays", tags=["Relays"])
 api_router.include_router(schedules_router, prefix="/schedules", tags=["Schedules"])
 api_router.include_router(triggers_router, prefix="/triggers", tags=["Triggers"])
 api_router.include_router(discovery_router, prefix="/discovery", tags=["Discovery"])
+api_router.include_router(models_router, prefix="/models", tags=["Sensor Models"])
 
 __all__ = ["api_router"]

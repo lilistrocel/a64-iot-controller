@@ -39,6 +39,7 @@ class DeviceManager:
     - Polls sensors at configurable intervals
     - Executes relay commands from the database
     - Tracks device online/offline status
+    - Uses model registry for configurable sensor reading
     """
 
     def __init__(self, db: Database):
@@ -47,6 +48,7 @@ class DeviceManager:
         self._running = False
         self._poll_task: Optional[asyncio.Task] = None
         self._relay_task: Optional[asyncio.Task] = None
+        self._model_mappings: Dict[str, List[dict]] = {}  # model_name -> mappings
 
     async def start(self) -> None:
         """Start the device manager"""
@@ -57,8 +59,31 @@ class DeviceManager:
         logger.info("Starting device manager...")
         self._running = True
 
+        # Load model mappings from registry
+        await self._load_model_mappings()
+
         # Load and connect to gateways
         await self._load_gateways()
+
+    async def _load_model_mappings(self) -> None:
+        """Load register mappings for all sensor models from database"""
+        models = await self.db.get_all_sensor_models()
+
+        for model in models:
+            mappings = await self.db.get_model_mappings(model["id"])
+            if mappings:
+                # Store by lowercase name for case-insensitive matching
+                self._model_mappings[model["name"].lower()] = mappings
+                logger.debug(
+                    f"Loaded {len(mappings)} mappings for model {model['name']}"
+                )
+
+        logger.info(f"Loaded mappings for {len(self._model_mappings)} device models")
+
+    async def reload_model_mappings(self) -> None:
+        """Reload model mappings (for hot-reload)"""
+        self._model_mappings.clear()
+        await self._load_model_mappings()
 
         # Start background tasks
         self._poll_task = asyncio.create_task(self._sensor_poll_loop())
@@ -225,71 +250,116 @@ class DeviceManager:
         channels: List[dict]
     ) -> Dict[str, float]:
         """
-        Read sensor data based on device model.
+        Read sensor data based on device model using register mappings.
+
+        Uses the model registry for configurable sensor reading.
+        Falls back to legacy hardcoded logic if model not in registry.
 
         Returns dict of channel_id -> value
         """
         readings = {}
         model_lower = model.lower() if model else ""
 
-        # SHT20 Temperature/Humidity sensor
-        if "sht20" in model_lower:
-            # SHT20 uses INPUT registers at address 1
-            response = await client.read_input_registers(
-                address=1,
-                count=2,
-                slave=slave
-            )
+        # Try to find mappings in the model registry
+        mappings = self._model_mappings.get(model_lower)
 
-            if response.success and response.data:
-                for channel in channels:
-                    ch_type = channel["channel_type"].lower()
-                    if "temperature" in ch_type:
-                        readings[channel["id"]] = response.data[0] * 0.1
-                    elif "humidity" in ch_type:
-                        readings[channel["id"]] = response.data[1] * 0.1
+        # Also try partial matches for models like "Soil-7in1" vs "soil"
+        if not mappings:
+            for key in self._model_mappings:
+                if key in model_lower or model_lower in key:
+                    mappings = self._model_mappings[key]
+                    break
 
-        # Soil 7-in-1 sensor (NPK, pH, EC, moisture, temp)
-        elif "soil" in model_lower or "7in1" in model_lower:
-            # This sensor uses HOLDING registers starting at address 6
-            response = await client.read_holding_registers(
-                address=6,
-                count=7,
-                slave=slave
-            )
-
-            if response.success and response.data:
-                # Map registers to channel types (exact match required)
-                # Register 6: moisture, 7: temp, 8: EC, 9: pH, 10: N, 11: P, 12: K
-                register_map = {
-                    "moisture": (0, 0.1),       # Moisture %
-                    "temperature": (1, 0.01),   # Temp °C (raw is *100)
-                    "conductivity": (2, 1),     # EC µS/cm
-                    "ph": (3, 0.01),            # pH (raw is *100)
-                    "nitrogen": (4, 1),         # N mg/kg
-                    "phosphorus": (5, 1),       # P mg/kg
-                    "potassium": (6, 1),        # K mg/kg
-                }
-
-                for channel in channels:
-                    ch_type = channel["channel_type"].lower()
-                    if ch_type in register_map:
-                        reg_idx, scale = register_map[ch_type]
-                        raw_value = response.data[reg_idx]
-                        readings[channel["id"]] = raw_value * scale
-
-        # Generic sensor - read holding registers based on channel_num
+        if mappings:
+            # Use registry-based reading
+            readings = await self._read_using_mappings(client, slave, channels, mappings)
         else:
-            for channel in channels:
-                ch_num = channel["channel_num"]
+            # Fallback to generic reading
+            logger.warning(f"No mappings found for model '{model}', using generic read")
+            readings = await self._read_generic_sensor(client, slave, channels)
+
+        return readings
+
+    async def _read_using_mappings(
+        self,
+        client: ModbusClient,
+        slave: int,
+        channels: List[dict],
+        mappings: List[dict]
+    ) -> Dict[str, float]:
+        """Read sensor data using register mappings from model registry"""
+        readings = {}
+
+        # Group mappings by function code and contiguous register addresses
+        # to minimize Modbus transactions
+        for channel in channels:
+            ch_type = channel["channel_type"].lower()
+
+            # Find the mapping for this channel type
+            mapping = next(
+                (m for m in mappings if m["channel_type"].lower() == ch_type),
+                None
+            )
+
+            if not mapping:
+                continue
+
+            # Read based on function code
+            func_code = mapping["function_code"]
+            address = mapping["register_address"]
+            count = mapping.get("register_count", 1)
+
+            response = None
+            if func_code == "read_input":
+                response = await client.read_input_registers(
+                    address=address, count=count, slave=slave
+                )
+            elif func_code == "read_holding":
                 response = await client.read_holding_registers(
-                    address=ch_num,
-                    count=1,
-                    slave=slave
+                    address=address, count=count, slave=slave
+                )
+            elif func_code == "read_coil":
+                response = await client.read_coils(
+                    address=address, count=count, slave=slave
                 )
 
-                if response.success and response.data:
-                    readings[channel["id"]] = response.data[0] * 0.1
+            if response and response.success and response.data:
+                # Apply scaling and offset
+                raw_value = response.data[0]
+                scale = mapping.get("scale", 1.0)
+                offset = mapping.get("offset", 0.0)
+
+                # Handle different data types
+                data_type = mapping.get("data_type", "uint16")
+                if data_type == "int16" and raw_value > 32767:
+                    raw_value = raw_value - 65536
+                elif data_type == "bool":
+                    raw_value = 1 if raw_value else 0
+
+                value = (raw_value * scale) + offset
+                readings[channel["id"]] = value
+
+        return readings
+
+    async def _read_generic_sensor(
+        self,
+        client: ModbusClient,
+        slave: int,
+        channels: List[dict]
+    ) -> Dict[str, float]:
+        """Generic sensor reading - reads holding registers based on channel_num"""
+        readings = {}
+
+        for channel in channels:
+            ch_num = channel["channel_num"]
+            response = await client.read_holding_registers(
+                address=ch_num,
+                count=1,
+                slave=slave
+            )
+
+            if response.success and response.data:
+                readings[channel["id"]] = response.data[0] * 0.1
 
         return readings
 
