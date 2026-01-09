@@ -65,6 +65,12 @@ class DeviceManager:
         # Load and connect to gateways
         await self._load_gateways()
 
+        # Start background tasks
+        self._poll_task = asyncio.create_task(self._sensor_poll_loop())
+        self._relay_task = asyncio.create_task(self._relay_control_loop())
+
+        logger.info("Device manager started")
+
     async def _load_model_mappings(self) -> None:
         """Load register mappings for all sensor models from database"""
         models = await self.db.get_all_sensor_models()
@@ -84,12 +90,7 @@ class DeviceManager:
         """Reload model mappings (for hot-reload)"""
         self._model_mappings.clear()
         await self._load_model_mappings()
-
-        # Start background tasks
-        self._poll_task = asyncio.create_task(self._sensor_poll_loop())
-        self._relay_task = asyncio.create_task(self._relay_control_loop())
-
-        logger.info("Device manager started")
+        logger.info("Model mappings reloaded")
 
     async def stop(self) -> None:
         """Stop the device manager"""
