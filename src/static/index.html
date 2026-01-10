@@ -26,6 +26,9 @@
                 <span x-show="!$store.dashboard.loading">Refresh</span>
                 <span x-show="$store.dashboard.loading" class="spinner"></span>
             </button>
+            <button class="btn btn-secondary" @click="$store.dashboard.showSettingsModal = true" title="Settings">
+                ⚙️ Settings
+            </button>
         </div>
     </header>
 
@@ -540,6 +543,29 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" @click="$store.dashboard.closeHistory()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" x-show="$store.dashboard.showSettingsModal" @click.self="$store.dashboard.showSettingsModal = false">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Settings</h3>
+                <button class="close-btn" @click="$store.dashboard.showSettingsModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="apiKeyInput">API Key</label>
+                    <input type="password" id="apiKeyInput" class="form-control"
+                           x-model="$store.dashboard.apiKeyInput"
+                           placeholder="Enter API key for relay control">
+                    <small class="form-help">Required for controlling relays. Leave empty if not set on controller.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @click="$store.dashboard.showSettingsModal = false">Cancel</button>
+                <button class="btn btn-primary" @click="$store.dashboard.saveApiKey()">Save</button>
             </div>
         </div>
     </div>

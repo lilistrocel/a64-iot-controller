@@ -42,8 +42,14 @@ document.addEventListener('alpine:init', () => {
         historyLoading: false,
         historyChart: null,
 
+        // Settings
+        showSettingsModal: false,
+        apiKeyInput: '',
+
         // Initialize
         async init() {
+            // Load API key from localStorage
+            this.apiKeyInput = api.getApiKey() || '';
             await this.refresh();
             this.startAutoRefresh();
         },
@@ -324,6 +330,13 @@ document.addEventListener('alpine:init', () => {
                     }
                 }
             });
+        },
+
+        // Settings
+        saveApiKey() {
+            api.setApiKey(this.apiKeyInput);
+            this.showSettingsModal = false;
+            this.showToast('API key saved', 'success');
         },
 
         // Toast notifications
