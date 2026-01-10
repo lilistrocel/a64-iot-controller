@@ -103,11 +103,14 @@ document.addEventListener('alpine:init', () => {
 
         // Toggle relay
         async toggleRelay(channelId, currentState) {
+            const apiKey = api.getApiKey();
+            console.log('Toggle relay - API key set:', apiKey ? 'yes' : 'no');
             try {
                 await api.controlRelay(channelId, !currentState);
                 this.showToast(`Relay ${currentState ? 'OFF' : 'ON'}`, 'success');
                 await this.refresh();
             } catch (e) {
+                console.error('Relay toggle error:', e);
                 this.showToast('Error: ' + e.message, 'error');
             }
         },
@@ -334,9 +337,15 @@ document.addEventListener('alpine:init', () => {
 
         // Settings
         saveApiKey() {
-            api.setApiKey(this.apiKeyInput);
-            this.showSettingsModal = false;
-            this.showToast('API key saved', 'success');
+            console.log('Saving API key:', this.apiKeyInput ? 'key provided' : 'empty');
+            if (this.apiKeyInput) {
+                api.setApiKey(this.apiKeyInput);
+                console.log('API key saved to localStorage');
+                this.showSettingsModal = false;
+                this.showToast('API key saved successfully!', 'success');
+            } else {
+                this.showToast('Please enter an API key', 'error');
+            }
         },
 
         // Toast notifications
